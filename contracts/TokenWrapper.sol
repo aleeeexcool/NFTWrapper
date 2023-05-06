@@ -52,6 +52,7 @@ contract NFTWrapper is ERC721, ERC721Holder {
         token.transferFrom(msg.sender, address(this), _amount);
 
         uint newId = _tokenIds.current();
+        _tokenIds.increment();
         _safeMint(msg.sender, newId);
         safeTransferFrom(address(this), msg.sender, newId);
 
