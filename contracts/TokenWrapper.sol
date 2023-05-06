@@ -2,30 +2,40 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
-import "./MyNFT.sol";
+import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract TokenWrapper {
-    mapping(address => bool) public allowedTokens;
+contract NFTWrapper is ERC721, ERC721Holder {
+    using Counters for Counters.Counter;
+    Counters.Counter public _tokenIds;
 
     address public owner;
 
-    uint256 public protocolFee = 5;
-    uint256 public constant FEE_DENOMINATOR = 1000;
-    uint256 public usdcBalance;
+    uint public protocolFee = 5;
+    uint public constant FEE_DENOMINATOR = 1000;
+    uint public usdcBalance;
 
     IERC20 public usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-    IUniswapV2Router02 public uniswapRouter;
+    IUniswapV2Router02 public uniswapRouter = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    
+    struct amountForEachToken {
+        address minter;
+        uint amount;
+    }
 
-    event TokensWrapped(address indexed tokenAddress, address indexed sender, uint256 amount, uint256 indexed tokenId);
-    event TokensUnwrapped(address indexed tokenAddress, address indexed sender, uint256 amount, uint256 indexed tokenId);
+    mapping(address => bool) public allowedTokens;
+    mapping(uint => amountForEachToken) public tokenIds;
+
+    event TokensWrapped(address indexed tokenAddress, address indexed sender, uint amount, uint indexed tokenId);
+    event TokensUnwrapped(address indexed tokenAddress, address indexed sender, uint amount, uint indexed tokenId);
     event TokenAdded(address indexed tokenAddress, address indexed sender);
     event TokenRemoved(address indexed tokenAddress, address indexed sender);
-    event ProtocolFeeChanged(uint256 fee);
+    event ProtocolFeeChanged(uint fee);
 
-    constructor(address _uniswapRouter) {
+    constructor() ERC721("MyNFT", "MNFT") {
         owner = msg.sender;
-        uniswapRouter = IUniswapV2Router02(_uniswapRouter);
     }
 
     modifier onlyOwner() {
@@ -33,59 +43,43 @@ contract TokenWrapper {
         _;
     }
 
-    function wrapTokens(address _tokenAddress, uint256 _amount) public {
+    function wrapTokens(address _tokenAddress, uint _amount) public {
         require(allowedTokens[_tokenAddress], "Token not allowed");
         require(_amount > 0, "Amount must be greater than zero");
 
         IERC20 token = IERC20(_tokenAddress);
+        token.approve(address(this), _amount);
         token.transferFrom(msg.sender, address(this), _amount);
 
-        uint256 tokenId_ = uint256(keccak256(abi.encodePacked(msg.sender, _tokenAddress, _amount, block.timestamp)));
+        uint newId = _tokenIds.current();
+        _safeMint(msg.sender, newId);
+        safeTransferFrom(address(this), msg.sender, newId);
 
-        MyNFT nft = new MyNFT();
-        nft.mint(msg.sender);
-        nft.transferFrom(address(this), msg.sender, tokenId_);
+        tokenIds[newId] = amountForEachToken(msg.sender, _amount);
 
-        emit TokensWrapped(_tokenAddress, msg.sender, _amount, tokenId_);
+        emit TokensWrapped(_tokenAddress, msg.sender, _amount, newId);
     }
 
-    // function wrapTokens(address _tokenAddress, uint256 _amount, address _nftAddress) public {
-    //     require(allowedTokens[_tokenAddress], "Token not allowed");
-    //     require(_amount > 0, "Amount must be greater than zero");
+    function unwrapTokens(address _tokenAddress, uint _tokenId) public {
+        require(ownerOf(_tokenId) == msg.sender, "Sender does not own this NFT");
+        require(allowedTokens[_tokenAddress], "Token not allowed");
 
-    //     IERC20 token = IERC20(_tokenAddress);
-    //     uint256 allowance = token.allowance(msg.sender, address(this));
-    //     require(allowance >= _amount, "Caller must approve contract to spend tokens");
-
-    //     require(_nftAddress != address(0), "Invalid NFT address");
-    //     MyNFT nft = MyNFT(_nftAddress);
-
-    //     // Generate unique and deterministic NFT token ID
-    //     uint256 tokenId_ = uint256(keccak256(abi.encodePacked(msg.sender, _tokenAddress, _amount, block.timestamp)));
-
-    //     // Transfer ERC20 tokens to contract
-    //     token.transferFrom(msg.sender, address(this), _amount);
-
-    //     // Mint and transfer NFT token to caller
-    //     nft.mint(msg.sender);
-    //     nft.transferFrom(address(this), msg.sender, tokenId_);
-
-    //     emit TokensWrapped(_tokenAddress, msg.sender, _amount, tokenId_);
-    // }
-
-    function unwrapTokens(address _tokenAddress, uint256 _tokenId) public {
-        MyNFT nft = MyNFT(address(this));
-        require(nft.ownerOf(_tokenId) == msg.sender, "Sender does not own this NFT");
-
-        uint256 _amount = getWrappedTokenAmount(_tokenId);
-        require(_amount > 0, "Invalid NFT");
-
+        uint amount_ = getWrappedTokenAmount(_tokenId);
         IERC20 token = IERC20(_tokenAddress);
-        token.transfer(msg.sender, _amount);
 
-        nft.burn(_tokenId);
+        _burn(_tokenId);
+        delete tokenIds[_tokenId];
+        token.approve(msg.sender, amount_);
+        token.transfer(msg.sender, amount_);
 
-        emit TokensUnwrapped(_tokenAddress, msg.sender, _amount, _tokenId);
+        emit TokensUnwrapped(_tokenAddress, msg.sender, amount_, _tokenId);
+    }
+
+    function getWrappedTokenAmount(uint _tokenId) public view returns (uint) {
+        require(ownerOf(_tokenId) != address(0), "Invalid NFT");
+
+        uint amount = tokenIds[_tokenId].amount;
+        return amount;
     }
 
     function addToken(address _tokenAddress) public onlyOwner {
@@ -102,23 +96,15 @@ contract TokenWrapper {
         emit TokenRemoved(_tokenAddress, msg.sender);
     }
 
-    function getWrappedTokenAmount(uint256 _tokenId) public view returns (uint256) {
-        MyNFT nft = MyNFT(address(this));
-        require(nft.ownerOf(_tokenId) != address(0), "Invalid NFT");
-
-        bytes memory data = abi.encode(nft.tokenURI(_tokenId));
-        (uint256 amount) = abi.decode(data, (uint256));
-        return amount;
-    }
-
-    function setProtocolFee(uint256 _protocolFee) public onlyOwner {
-        require(_protocolFee < FEE_DENOMINATOR, "Fee can't be higher than 100%");
+    function setProtocolFee(uint _protocolFee) public onlyOwner {
+        require(_protocolFee <= FEE_DENOMINATOR, "Fee can't be higher than 100%");
         protocolFee = _protocolFee;
+
         emit ProtocolFeeChanged(_protocolFee);
     }
 
     function withdrawFees() public onlyOwner {
-        uint256 feeAmount = usdcBalance * protocolFee / FEE_DENOMINATOR;
+        uint feeAmount = usdcBalance * protocolFee / FEE_DENOMINATOR;
         usdc.approve(address(uniswapRouter), feeAmount);
 
         address[] memory path = new address[](2);
