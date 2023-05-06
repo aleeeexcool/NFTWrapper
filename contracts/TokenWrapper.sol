@@ -23,6 +23,7 @@ contract NFTWrapper is ERC721, ERC721Holder {
     struct amountForEachToken {
         address minter;
         uint amount;
+        address tokenAddress;
     }
 
     mapping(address => bool) public allowedTokens;
@@ -56,7 +57,7 @@ contract NFTWrapper is ERC721, ERC721Holder {
         _safeMint(msg.sender, newId);
         safeTransferFrom(address(this), msg.sender, newId);
 
-        tokenIds[newId] = amountForEachToken(msg.sender, _amount);
+        tokenIds[newId] = amountForEachToken(msg.sender, _amount, _tokenAddress);
 
         emit TokensWrapped(_tokenAddress, msg.sender, _amount, newId);
     }
@@ -64,6 +65,7 @@ contract NFTWrapper is ERC721, ERC721Holder {
     function unwrapTokens(address _tokenAddress, uint _tokenId) public {
         require(ownerOf(_tokenId) == msg.sender, "Sender does not own this NFT");
         require(allowedTokens[_tokenAddress], "Token not allowed");
+        require(tokenIds[_tokenId].tokenAddress == _tokenAddress, "Invalid token address");
 
         uint amount_ = getWrappedTokenAmount(_tokenId);
         IERC20 token = IERC20(_tokenAddress);
