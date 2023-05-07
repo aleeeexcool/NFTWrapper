@@ -3,23 +3,25 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
+import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
+import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
-contract NFTWrapper is ERC721, ERC721Holder {
+contract NFTWrapper is ERC721 {
     using Counters for Counters.Counter;
     Counters.Counter public _tokenIds;
+    using SafeERC20 for IERC20;
 
     address public owner;
 
     uint public protocolFee = 5;
     uint public constant FEE_DENOMINATOR = 1000;
-    uint public usdcBalance;
     uint public feeAmount;
 
-    IERC20 public usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
-    IUniswapV2Router02 public uniswapRouter = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+    address public usdcAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    address public routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     
     struct amountForEachToken {
         address minter;
@@ -70,8 +72,9 @@ contract NFTWrapper is ERC721, ERC721Holder {
         uint amount_ = getWrappedTokenAmount(_tokenId);
         _burn(_tokenId);
         delete tokenIds[_tokenId];
-        uint amountWithoutFee = amount_ * protocolFee / FEE_DENOMINATOR;
-        feeAmount += amountWithoutFee;
+        uint fee = amount_ * protocolFee / FEE_DENOMINATOR;
+        uint amountWithoutFee = amount_ - fee;
+        feeAmount += fee;
 
         IERC20 token = IERC20(_tokenAddress);
         token.transfer(tx.origin, amountWithoutFee);
@@ -87,14 +90,14 @@ contract NFTWrapper is ERC721, ERC721Holder {
     }
 
     function addToken(address _tokenAddress) public onlyOwner {
-        require(!allowedTokens[_tokenAddress], "Token already allowed");
+        require(allowedTokens[_tokenAddress] != true, "Token already allowed");
 
         allowedTokens[_tokenAddress] = true;
         emit TokenAdded(_tokenAddress, msg.sender);
     }
 
     function removeToken(address _tokenAddress) public onlyOwner {
-        require(allowedTokens[_tokenAddress], "Token not allowed");
+        require(allowedTokens[_tokenAddress] != false, "Token not allowed");
 
         allowedTokens[_tokenAddress] = false;
         emit TokenRemoved(_tokenAddress, msg.sender);
@@ -107,26 +110,32 @@ contract NFTWrapper is ERC721, ERC721Holder {
         emit ProtocolFeeChanged(_protocolFee);
     }
 
-    function withdrawFees() public onlyOwner {
-        usdc.approve(address(uniswapRouter), feeAmount);
+    function withdrawFees(address _tokenAddress) public onlyOwner {
+        require(allowedTokens[_tokenAddress] != false, "Token not allowed");
 
+        IERC20 token = IERC20(_tokenAddress);
+        uint erc20Balance = token.balanceOf(owner);
+        require(erc20Balance >= feeAmount, "Insufficient ERC20 balance");
+
+        IERC20 usdc = IERC20(usdcAddress);
+
+        IUniswapV2Router02 router = IUniswapV2Router02(routerAddress);
+        address pairAddress = UniswapV2Library.pairFor(router.factory(), _erc20Address, usdcAddress);        
+        IUniswapV2Pair pair = IUniswapV2Pair(pairAddress);
+
+        token.approve(routerAddress, feeAmount);
         address[] memory path = new address[](2);
-        path[0] = address(usdc);
-        path[1] = uniswapRouter.WETH();
+        path[0] = _tokenAddress;
+        path[1] = usdcAddress;
+        uint256[] memory amounts = router.swapExactTokensForTokens(
+            feeAmount, 
+            0, 
+            path, 
+            address(this), 
+            block.timestamp + 1000);
 
-        IUniswapV2Router02(uniswapRouter).swapExactTokensForETH(
-            feeAmount,
-            0,
-            path,
-            msg.sender,
-            block.timestamp
-        );
+        uint256 usdcAmount = amounts[1];
 
-        usdcBalance -= feeAmount;
-    }
-
-    function deposit() public payable {
-        require(msg.sender == address(usdc), "Invalid sender");
-        usdcBalance += msg.value;
+        usdc.safeTransfer(owner, usdcAmount);
     }
 }
