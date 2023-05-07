@@ -16,6 +16,7 @@ contract NFTWrapper is ERC721, ERC721Holder {
     uint public protocolFee = 5;
     uint public constant FEE_DENOMINATOR = 1000;
     uint public usdcBalance;
+    uint public feeAmount;
 
     IERC20 public usdc = IERC20(0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48);
     IUniswapV2Router02 public uniswapRouter = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
@@ -49,17 +50,16 @@ contract NFTWrapper is ERC721, ERC721Holder {
         require(_amount > 0, "Amount must be greater than zero");
 
         IERC20 token = IERC20(_tokenAddress);
-        token.approve(address(this), _amount);
-        token.transferFrom(msg.sender, address(this), _amount);
+        // token.approve(address(this), _amount);
+        token.transferFrom(tx.origin, address(this), _amount);
 
         uint newId = _tokenIds.current();
         _tokenIds.increment();
-        _safeMint(msg.sender, newId);
-        safeTransferFrom(address(this), msg.sender, newId);
+        _safeMint(tx.origin, newId);
 
-        tokenIds[newId] = amountForEachToken(msg.sender, _amount, _tokenAddress);
+        tokenIds[newId] = amountForEachToken(tx.origin, _amount, _tokenAddress);
 
-        emit TokensWrapped(_tokenAddress, msg.sender, _amount, newId);
+        emit TokensWrapped(_tokenAddress, tx.origin, _amount, newId);
     }
 
     function unwrapTokens(address _tokenAddress, uint _tokenId) public {
@@ -68,14 +68,15 @@ contract NFTWrapper is ERC721, ERC721Holder {
         require(tokenIds[_tokenId].tokenAddress == _tokenAddress, "Invalid token address");
 
         uint amount_ = getWrappedTokenAmount(_tokenId);
-        IERC20 token = IERC20(_tokenAddress);
-
         _burn(_tokenId);
         delete tokenIds[_tokenId];
-        token.approve(msg.sender, amount_);
-        token.transfer(msg.sender, amount_);
+        uint amountWithoutFee = amount_ * protocolFee / FEE_DENOMINATOR;
+        feeAmount += amountWithoutFee;
 
-        emit TokensUnwrapped(_tokenAddress, msg.sender, amount_, _tokenId);
+        IERC20 token = IERC20(_tokenAddress);
+        token.transfer(tx.origin, amountWithoutFee);
+
+        emit TokensUnwrapped(_tokenAddress, tx.origin, amountWithoutFee, _tokenId);
     }
 
     function getWrappedTokenAmount(uint _tokenId) public view returns (uint) {
@@ -107,7 +108,6 @@ contract NFTWrapper is ERC721, ERC721Holder {
     }
 
     function withdrawFees() public onlyOwner {
-        uint feeAmount = usdcBalance * protocolFee / FEE_DENOMINATOR;
         usdc.approve(address(uniswapRouter), feeAmount);
 
         address[] memory path = new address[](2);
