@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
 import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
@@ -12,7 +11,6 @@ import "@openzeppelin/contracts/utils/Counters.sol";
 contract NFTWrapper is ERC721 {
     using Counters for Counters.Counter;
     Counters.Counter public _tokenIds;
-    using SafeERC20 for IERC20;
 
     address public owner;
 
@@ -23,14 +21,14 @@ contract NFTWrapper is ERC721 {
     address public usdcAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
     address public routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
     
-    struct amountForEachToken {
+    struct WrappedTokens {
         address minter;
         uint amount;
         address tokenAddress;
     }
 
     mapping(address => bool) public allowedTokens;
-    mapping(uint => amountForEachToken) public tokenIds;
+    mapping(uint => WrappedTokens) public tokenIds;
 
     event TokensWrapped(address indexed tokenAddress, address indexed sender, uint amount, uint indexed tokenId);
     event TokensUnwrapped(address indexed tokenAddress, address indexed sender, uint amount, uint indexed tokenId);
@@ -59,7 +57,7 @@ contract NFTWrapper is ERC721 {
         _tokenIds.increment();
         _safeMint(tx.origin, newId);
 
-        tokenIds[newId] = amountForEachToken(tx.origin, _amount, _tokenAddress);
+        tokenIds[newId] = WrappedTokens(tx.origin, _amount, _tokenAddress);
 
         emit TokensWrapped(_tokenAddress, tx.origin, _amount, newId);
     }

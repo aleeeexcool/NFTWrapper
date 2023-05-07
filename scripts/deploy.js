@@ -1,11 +1,11 @@
 const hre = require("hardhat");
 
 async function main() {
-  const TokenWrapper = await ethers.getContractFactory('TokenWrapper');
+  const NFTWrapper = await ethers.getContractFactory('NFTWrapper');
 
-  const wrapper = await TokenWrapper.deploy();
+  const wrapper = await NFTWrapper.deploy();
   await wrapper.deployed();
-  console.log('TokenWrapper deployed to:', wrapper.address);
+  console.log('NFTWrapper deployed to:', wrapper.address);
 }
 
 main().catch((error) => {
