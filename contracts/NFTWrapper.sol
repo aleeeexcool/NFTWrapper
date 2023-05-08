@@ -65,7 +65,7 @@ contract NFTWrapper is ERC721 {
 
     function unwrapTokens(address _tokenAddress, uint _tokenId) public {
         require(ownerOf(_tokenId) == msg.sender, "Sender does not own this NFT");
-        require(allowedTokens[_tokenAddress], "Token not allowed");
+        require(allowedTokens[_tokenAddress] == true, "Token not allowed");
         require(tokenIds[_tokenId].tokenAddress == _tokenAddress, "Invalid token address");
 
         uint amount_ = getWrappedTokenAmount(_tokenId);
