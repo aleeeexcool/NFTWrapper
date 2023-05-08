@@ -44,7 +44,7 @@ contract NFTWrapper is ERC721 {
     }
 
     function wrapTokens(address _tokenAddress, uint _amount) public {
-        require(allowedTokens[_tokenAddress], "Token not allowed");
+        require(allowedTokens[_tokenAddress] == true, "Token not allowed");
         require(_amount > 0, "Amount must be greater than zero");
 
         IERC20 token = IERC20(_tokenAddress);
