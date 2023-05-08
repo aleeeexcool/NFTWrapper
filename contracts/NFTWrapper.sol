@@ -1,16 +1,15 @@
-// SPDX-License-Identifier: MIT
+//SPDX-License-Identifier: MIT
 pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@uniswap/v2-periphery/contracts/interfaces/IUniswapV2Router02.sol";
 import "@uniswap/v2-core/contracts/interfaces/IUniswapV2Pair.sol";
-import "@uniswap/v2-periphery/contracts/libraries/UniswapV2Library.sol";
 import "@openzeppelin/contracts/utils/Counters.sol";
 
 contract NFTWrapper is ERC721 {
     using Counters for Counters.Counter;
-    Counters.Counter public _tokenIds;
+    Counters.Counter public allIds;
 
     address public owner;
 
@@ -50,11 +49,14 @@ contract NFTWrapper is ERC721 {
         require(_amount > 0, "Amount must be greater than zero");
 
         IERC20 token = IERC20(_tokenAddress);
-        // token.approve(address(this), _amount);
+        // @dev: before transferFrom, user must approve this contract to spend their tokens
+        // There are two ways to do this:
+        // 1. Call approve() using front-end to get approval from user
+        // 2. The user must approve it themselves using the ERC20 approve() function
         token.transferFrom(tx.origin, address(this), _amount);
 
-        uint newId = _tokenIds.current();
-        _tokenIds.increment();
+        uint newId = allIds.current();
+        allIds.increment();
         _safeMint(tx.origin, newId);
 
         tokenIds[newId] = WrappedTokens(tx.origin, _amount, _tokenAddress);
@@ -118,22 +120,20 @@ contract NFTWrapper is ERC721 {
         IERC20 usdc = IERC20(usdcAddress);
 
         IUniswapV2Router02 router = IUniswapV2Router02(routerAddress);
-        address pairAddress = UniswapV2Library.pairFor(router.factory(), _erc20Address, usdcAddress);        
-        IUniswapV2Pair pair = IUniswapV2Pair(pairAddress);
 
         token.approve(routerAddress, feeAmount);
         address[] memory path = new address[](2);
         path[0] = _tokenAddress;
         path[1] = usdcAddress;
-        uint256[] memory amounts = router.swapExactTokensForTokens(
+        uint[] memory amounts = router.swapExactTokensForTokens(
             feeAmount, 
             0, 
             path, 
             address(this), 
             block.timestamp + 1000);
 
-        uint256 usdcAmount = amounts[1];
+        uint usdcAmount = amounts[1];
 
-        usdc.safeTransfer(owner, usdcAmount);
+        usdc.transfer(owner, usdcAmount);
     }
 }
