@@ -130,9 +130,9 @@ contract NFTWrapper is ERC721 {
             path, 
             address(this), 
             block.timestamp + 1000);
-
+        
+        feeAmount = 0;
         uint usdcAmount = amounts[1];
-
         usdc.transfer(owner, usdcAmount);
     }
 }
