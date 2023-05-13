@@ -11,14 +11,13 @@ contract NFTWrapper is ERC721 {
     Counters.Counter public allIds;
 
     address public owner;
+    address public usdcAddress;
+    address public routerAddress;
 
     uint public protocolFee = 5;
     uint public constant FEE_DENOMINATOR = 1000;
     uint public feeAmount;
 
-    address public usdcAddress = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-    address public routerAddress = 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D;
-    
     struct WrappedTokens {
         address minter;
         uint amount;
@@ -34,8 +33,10 @@ contract NFTWrapper is ERC721 {
     event TokenRemoved(address indexed tokenAddress, address indexed sender);
     event ProtocolFeeChanged(uint fee);
 
-    constructor() ERC721("MyNFT", "MNFT") {
+    constructor(address _usdcAddress, address _routerAddress) ERC721("MyNFT", "MNFT") {
         owner = msg.sender;
+        usdcAddress = _usdcAddress; //0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+        routerAddress = _routerAddress; //0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
     }
 
     modifier onlyOwner() {
@@ -56,11 +57,11 @@ contract NFTWrapper is ERC721 {
 
         uint newId = allIds.current();
         allIds.increment();
-        _safeMint(tx.origin, newId);
+        _safeMint(msg.sender, newId);
 
-        tokenIds[newId] = WrappedTokens(tx.origin, _amount, _tokenAddress);
+        tokenIds[newId] = WrappedTokens(msg.sender, _amount, _tokenAddress);
 
-        emit TokensWrapped(_tokenAddress, tx.origin, _amount, newId);
+        emit TokensWrapped(_tokenAddress, msg.sender, _amount, newId);
     }
 
     function unwrapTokens(address _tokenAddress, uint _tokenId) public {
@@ -78,7 +79,7 @@ contract NFTWrapper is ERC721 {
         IERC20 token = IERC20(_tokenAddress);
         token.transfer(tx.origin, amountWithoutFee);
 
-        emit TokensUnwrapped(_tokenAddress, tx.origin, amountWithoutFee, _tokenId);
+        emit TokensUnwrapped(_tokenAddress, msg.sender, amountWithoutFee, _tokenId);
     }
 
     function getWrappedTokenAmount(uint _tokenId) public view returns (uint) {
