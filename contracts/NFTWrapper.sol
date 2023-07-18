@@ -53,7 +53,7 @@ contract NFTWrapper is ERC721 {
         // There are two ways to do this:
         // 1. Call approve() using front-end to get approval from user
         // 2. The user must approve it themselves using the ERC20 approve() function
-        token.transferFrom(tx.origin, address(this), _amount);
+        token.transferFrom(msg.sender, address(this), _amount);
 
         uint newId = allIds.current();
         allIds.increment();
@@ -77,7 +77,7 @@ contract NFTWrapper is ERC721 {
         feeAmount += fee;
 
         IERC20 token = IERC20(_tokenAddress);
-        token.transfer(tx.origin, amountWithoutFee);
+        token.transfer(msg.sender, amountWithoutFee);
 
         emit TokensUnwrapped(_tokenAddress, msg.sender, amountWithoutFee, _tokenId);
     }
